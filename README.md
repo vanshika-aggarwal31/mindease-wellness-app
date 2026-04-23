@@ -43,7 +43,17 @@ streamlit run app.py
 
 ## 📸 Screenshots
 
-> A warm, soothing mental wellness dashboard with AI chat, mood tracking and breathing exercises.
+### 🏠 Home Dashboard
+![Home](screenshots/home.png)
+
+### 💬 AI Chat
+![Chat](screenshots/AI Chat.png)
+
+### 🌬️ Breathing Exercise
+![Breathe](screenshots/breathing exercise.png)
+
+### 📔 Journal
+![Journal](screenshots/my journal.png)
 
 ---
 

@@ -433,3 +433,4 @@ else:
         affirmations_page()
     elif "Settings" in page:
         settings_page()
+        
