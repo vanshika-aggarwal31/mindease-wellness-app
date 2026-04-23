@@ -2,6 +2,9 @@ import streamlit as st
 import google.generativeai as genai
 from datetime import datetime
 import random
+import bcrypt
+import json
+import os
 
 # ========== CONFIG ==========
 st.set_page_config(
@@ -15,6 +18,19 @@ st.set_page_config(
 GEMINI_API_KEY = "AIzaSyA-m_ip-OISbpVq-r2tFmI_aTCaaei8Gq4"
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
+
+# ========== DATABASE (JSON file) ==========
+DB_FILE = "users.json"
+
+def load_users():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_users(users):
+    with open(DB_FILE, "w") as f:
+        json.dump(users, f)
 
 # ========== THEME ==========
 if "theme" not in st.session_state:
@@ -66,12 +82,6 @@ st.markdown(f"""
         max-width: 75%;
         font-size: 14px;
     }}
-    .mood-btn {{
-        font-size: 28px;
-        background: none;
-        border: none;
-        cursor: pointer;
-    }}
     div[data-testid="stButton"] button {{
         background-color: {accent};
         color: white;
@@ -97,6 +107,16 @@ if "journal_entries" not in st.session_state:
     st.session_state.journal_entries = []
 if "mood_log" not in st.session_state:
     st.session_state.mood_log = []
+if "page" not in st.session_state:
+    st.session_state.page = "login"
+
+SECURITY_QUESTIONS = [
+    "What is your mother's maiden name?",
+    "What was the name of your first pet?",
+    "What city were you born in?",
+    "What is your favourite movie?",
+    "What was your childhood nickname?"
+]
 
 # ========== LOGIN PAGE ==========
 def login_page():
@@ -112,30 +132,85 @@ def login_page():
         """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        tab1, tab2 = st.tabs(["Login", "Sign Up"])
+        tab1, tab2, tab3 = st.tabs(["Login", "Sign Up", "Forgot Password"])
 
+        # ===== LOGIN TAB =====
         with tab1:
-            name = st.text_input("Name", placeholder="Vanshika", key="login_name")
+            username = st.text_input("Username", placeholder="vanshika", key="login_user")
             password = st.text_input("Password", type="password", placeholder="••••••••", key="login_pass")
-            if st.button("Sign In 🌸", use_container_width=True):
-                if name and password:
-                    st.session_state.logged_in = True
-                    st.session_state.username = name
-                    st.rerun()
-                else:
-                    st.error("Please fill all fields!")
 
-        with tab2:
-            new_name = st.text_input("Your name", placeholder="Vanshika", key="signup_name")
-            new_email = st.text_input("Email", placeholder="you@email.com", key="signup_email")
-            new_pass = st.text_input("Password", type="password", placeholder="••••••••", key="signup_pass")
-            if st.button("Create Account 🌸", use_container_width=True):
-                if new_name and new_email and new_pass:
-                    st.session_state.logged_in = True
-                    st.session_state.username = new_name
-                    st.rerun()
+            if st.button("Sign In 🌸", use_container_width=True, key="signin_btn"):
+                users = load_users()
+                if username in users:
+                    stored_hash = users[username]["password"].encode()
+                    if bcrypt.checkpw(password.encode(), stored_hash):
+                        st.session_state.logged_in = True
+                        st.session_state.username = username
+                        st.success(f"Welcome back, {username}! 🌸")
+                        st.rerun()
+                    else:
+                        st.error("Wrong password! Please try again.")
                 else:
+                    st.error("Username not found! Please sign up first.")
+
+        # ===== SIGNUP TAB =====
+        with tab2:
+            new_user = st.text_input("Choose username", placeholder="vanshika", key="signup_user")
+            new_pass = st.text_input("Choose password", type="password", placeholder="••••••••", key="signup_pass")
+            confirm_pass = st.text_input("Confirm password", type="password", placeholder="••••••••", key="confirm_pass")
+            security_q = st.selectbox("Security question", SECURITY_QUESTIONS, key="sec_q")
+            security_a = st.text_input("Your answer", placeholder="Answer...", key="sec_a")
+
+            if st.button("Create Account 🌸", use_container_width=True, key="signup_btn"):
+                if not all([new_user, new_pass, confirm_pass, security_a]):
                     st.error("Please fill all fields!")
+                elif new_pass != confirm_pass:
+                    st.error("Passwords don't match!")
+                elif len(new_pass) < 6:
+                    st.error("Password must be at least 6 characters!")
+                else:
+                    users = load_users()
+                    if new_user in users:
+                        st.error("Username already taken! Choose another.")
+                    else:
+                        hashed = bcrypt.hashpw(new_pass.encode(), bcrypt.gensalt()).decode()
+                        users[new_user] = {
+                            "password": hashed,
+                            "security_question": security_q,
+                            "security_answer": security_a.lower().strip()
+                        }
+                        save_users(users)
+                        st.success("Account created! Please login. 🌸")
+
+        # ===== FORGOT PASSWORD TAB =====
+        with tab3:
+            st.markdown(f"<p>Answer your security question to reset password.</p>", unsafe_allow_html=True)
+            fp_user = st.text_input("Enter your username", key="fp_user")
+
+            if fp_user:
+                users = load_users()
+                if fp_user in users:
+                    user_data = users[fp_user]
+                    st.info(f"Security Question: **{user_data['security_question']}**")
+                    fp_answer = st.text_input("Your answer", key="fp_answer")
+                    new_password = st.text_input("New password", type="password", key="fp_newpass")
+                    confirm_new = st.text_input("Confirm new password", type="password", key="fp_confirm")
+
+                    if st.button("Reset Password 🔑", use_container_width=True):
+                        if fp_answer.lower().strip() == user_data["security_answer"]:
+                            if new_password == confirm_new and len(new_password) >= 6:
+                                hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+                                users[fp_user]["password"] = hashed
+                                save_users(users)
+                                st.success("Password reset successfully! Please login. 🌸")
+                            elif new_password != confirm_new:
+                                st.error("Passwords don't match!")
+                            else:
+                                st.error("Password must be at least 6 characters!")
+                        else:
+                            st.error("Wrong answer! Please try again.")
+                else:
+                    st.warning("Username not found!")
 
 # ========== SIDEBAR ==========
 def sidebar():
@@ -157,6 +232,7 @@ def sidebar():
         st.markdown("---")
         if st.button("Logout"):
             st.session_state.logged_in = False
+            st.session_state.username = ""
             st.rerun()
 
         return page
@@ -175,7 +251,7 @@ def home_page():
         emoji = "🌙"
 
     st.markdown(f"<h1>{emoji} {greeting}, {st.session_state.username}!</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='font-size:16px; color:{text}'>How are you feeling today?</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='font-size:16px;'>How are you feeling today?</p>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -213,13 +289,11 @@ def chat_page():
     st.markdown("<h1>💬 AI Wellness Chat</h1>", unsafe_allow_html=True)
     st.markdown(f"<p>I'm here to listen. Talk to me about anything. 🌸</p>", unsafe_allow_html=True)
 
-    chat_container = st.container()
-    with chat_container:
-        for msg in st.session_state.chat_history:
-            if msg["role"] == "user":
-                st.markdown(f"<div class='chat-user'>{msg['text']}</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div class='chat-ai'>🌸 {msg['text']}</div>", unsafe_allow_html=True)
+    for msg in st.session_state.chat_history:
+        if msg["role"] == "user":
+            st.markdown(f"<div class='chat-user'>{msg['text']}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='chat-ai'>🌸 {msg['text']}</div>", unsafe_allow_html=True)
 
     user_input = st.chat_input("Share what's on your mind...")
     if user_input:
@@ -274,17 +348,6 @@ def breathe_page():
                 <h3>{name}</h3>
                 <h2 style='color:{color} !important'>{seconds}s</h2>
             </div>""", unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class='card' style='text-align:center; padding:40px'>
-        <div style='width:120px; height:120px; border-radius:50%; 
-             background: linear-gradient(135deg, {accent}, #FFB347);
-             margin: 0 auto; display:flex; align-items:center; 
-             justify-content:center; font-size:40px;'>
-            🌬️
-        </div>
-        <p style='margin-top:16px'>Close your eyes and follow along...</p>
-    </div>""", unsafe_allow_html=True)
 
 # ========== JOURNAL PAGE ==========
 def journal_page():
@@ -343,16 +406,9 @@ def mood_page():
         st.markdown("<h3>Your mood history</h3>", unsafe_allow_html=True)
         st.line_chart(df.set_index("date")["value"])
 
-        st.markdown("<h3>Recent logs</h3>", unsafe_allow_html=True)
-        for log in reversed(st.session_state.mood_log[-5:]):
-            st.markdown(f"""<div class='card'>
-                <b>{log['date']}</b> — {log['mood']}
-            </div>""", unsafe_allow_html=True)
-
 # ========== AFFIRMATIONS PAGE ==========
 def affirmations_page():
     st.markdown("<h1>✨ Daily Affirmations</h1>", unsafe_allow_html=True)
-    st.markdown("<p>Words that heal. 🌸</p>", unsafe_allow_html=True)
 
     all_quotes = [
         "You are enough, just as you are. 🌸",
@@ -361,7 +417,7 @@ def affirmations_page():
         "Your feelings are valid. 🌿",
         "You are braver than you believe. 💪",
         "Small steps still move you forward. ✨",
-        "It's okay to rest. You don't have to be productive every day. 🌙",
+        "It's okay to rest. 🌙",
         "You have survived every hard day so far. 🏆",
         "Breathe. This too shall pass. 🍃",
         "You are not alone. 🤝",
@@ -371,7 +427,6 @@ def affirmations_page():
 
     if "fav_quotes" not in st.session_state:
         st.session_state.fav_quotes = []
-
     if "current_quote" not in st.session_state:
         st.session_state.current_quote = random.choice(all_quotes)
 
@@ -400,13 +455,11 @@ def affirmations_page():
 def settings_page():
     st.markdown("<h1>⚙️ Settings</h1>", unsafe_allow_html=True)
 
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<h3>Theme</h3>", unsafe_allow_html=True)
     theme_choice = st.radio("Choose theme", ["🌸 Light theme", "🌙 Dark theme"])
     if st.button("Apply theme"):
         st.session_state.theme = "light" if "Light" in theme_choice else "dark"
         st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown(f"""<div class='card'>
         <h3>About MindEase 🌸</h3>
@@ -433,4 +486,3 @@ else:
         affirmations_page()
     elif "Settings" in page:
         settings_page()
-        

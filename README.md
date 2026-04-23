@@ -46,14 +46,6 @@ streamlit run app.py
 ### 🏠 Home Dashboard
 ![Home](screenshots/home.png)
 
-### 💬 AI Chat
-![Chat](screenshots/AI Chat.png)
-
-### 🌬️ Breathing Exercise
-![Breathe](screenshots/breathing exercise.png)
-
-### 📔 Journal
-![Journal](screenshots/my journal.png)
 
 ---
 
